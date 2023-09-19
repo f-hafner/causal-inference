@@ -1,4 +1,5 @@
 import pandas as pd 
+import matplotlib.pyplot as plt 
 
 def read_data(file): 
     return pd.read_stata("https://github.com/scunning1975/mixtape/raw/master/" + file)
@@ -25,4 +26,24 @@ def load_data():
 
     return nsw_stacked
 
+
+
+def make_histogram(df, input_map, xlabel="Value"):
+    "Make a histogram of df, mapping over inputs in `input_map`."
+    plt.figure(figsize=(6, 4))
+    plt.title("Histogram of propensity score")
+    plt.xlabel(xlabel)
+    plt.ylabel("Density")
+    plt.grid(True)
+
+    for label, params in input_map.items():
+        x = df.loc[params["mask"], "pscore"]
+        # Create histograms for each group
+        plt.hist(x, bins=20, density=True, alpha=0.7, color=params["color"], label=label)
+
+        # Add legend
+        plt.legend()
+
+    # Display the plot
+    plt.show()
 
