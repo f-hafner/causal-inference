@@ -1,5 +1,6 @@
 import pandas as pd 
-import matplotlib.pyplot as plt 
+from dataclasses import dataclass 
+import numpy as np
 
 def read_data(file): 
     return pd.read_stata("https://github.com/scunning1975/mixtape/raw/master/" + file)
@@ -27,23 +28,55 @@ def load_data():
     return nsw_stacked
 
 
+@dataclass
+class SumStat:
+    """Summary statistic of a variable between two groups 0 and 1
+    The summary statistics are the difference in means and the respective variances.
+    """
+    mu_diff: float = None 
+    sigma1: float = None 
+    sigma0: float = None
 
-def make_histogram(df, input_map, xlabel="Value"):
-    "Make a histogram of df, mapping over inputs in `input_map`."
-    plt.figure(figsize=(6, 4))
-    plt.title("Histogram of propensity score")
-    plt.xlabel(xlabel)
-    plt.ylabel("Density")
-    plt.grid(True)
+    def normdiff(self, denominator=None):
+        "Returns normalized differences"
+        if denominator is None:
+            denominator = np.sqrt((self.sigma0 + self.sigma1)/2)
+        return self.mu_diff / denominator
+    
+    def diff_logstd(self):
+        "Returns difference in standard deviations"
+        s1 = np.sqrt(self.sigma1)
+        s0 = np.sqrt(self.sigma0)
+        return np.log(s1 / s0) 
+    
 
-    for label, params in input_map.items():
-        x = df.loc[params["mask"], "pscore"]
-        # Create histograms for each group
-        plt.hist(x, bins=20, density=True, alpha=0.7, color=params["color"], label=label)
+def compute_stats(df_1, df_0, xvar):
+    "Compute statistics for overlap on `xvar` between df_1 and df_0"
+    x1 = df_1.loc[:, xvar].copy()
+    x0 = df_0.loc[:, xvar].copy()
+    mu_diff = x1.mean() - x0.mean()
+    return SumStat(mu_diff, x1.var(), x0.var())
 
-        # Add legend
-        plt.legend()
 
-    # Display the plot
-    plt.show()
+def compute_balancing_stats(xvars, treated, control_prematch, control_postmatch): 
+    "Compute balancing statistics for two dataframes, before and after matching"
+    sumstats = {}
 
+    for x in xvars:
+        prematch = compute_stats(treated, control_prematch, x)
+        postmatch = compute_stats(treated, control_postmatch, x)
+        sumstats[x] = (postmatch, prematch)
+
+    normalized_differences = {}
+    diff_log_stds = {}
+    for x, stats in sumstats.items():
+        postmatch, prematch = stats
+        denominator = np.sqrt((postmatch.sigma1 + postmatch.sigma0)/2)
+
+        mudiff_post, mudiff_pre = (y.normdiff(denominator=denominator) for y in stats) 
+        stddiff_post, stddiff_pre = (y.diff_logstd() for y in stats)
+        
+        normalized_differences[x] = (mudiff_post, mudiff_pre)
+        diff_log_stds[x] = (stddiff_post, stddiff_pre)
+
+    return normalized_differences, diff_log_stds
